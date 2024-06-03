@@ -376,7 +376,13 @@ library SafeMath {
     }
 }
 
-contract MultiRewards is ReentrancyGuard, Pausable {
+interface IPool {
+    function claimFees() external returns (uint256 claimed0, uint256 claimed1);
+    function token0() external view returns (address);
+    function token1() external view returns (address);
+}
+
+contract MultiRewardsForStakingLP is ReentrancyGuard, Pausable {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -391,6 +397,9 @@ contract MultiRewards is ReentrancyGuard, Pausable {
         uint256 rewardPerTokenStored;
     }
     IERC20 public stakingToken;
+    IERC20 public token0;
+    IERC20 public token1;
+    IPool public pool;
     mapping(address => Reward) public rewardData;
     address[] public rewardTokens;
 
@@ -408,6 +417,9 @@ contract MultiRewards is ReentrancyGuard, Pausable {
         address _stakingToken
     ) public Owned(_owner) {
         stakingToken = IERC20(_stakingToken);
+        pool = IPool(_stakingToken);
+        token0 = IERC20(pool.token0());
+        token1 = IERC20(pool.token1());
     }
 
     function addReward(
@@ -536,6 +548,14 @@ contract MultiRewards is ReentrancyGuard, Pausable {
         emit RewardsDurationUpdated(_rewardsToken, rewardData[_rewardsToken].rewardsDuration);
     }
 
+    // To claim LP trading fees and send to multisig
+    function claimTradingFees() external onlyOwner {
+        (uint256 claimed0, uint256 claimed1) = pool.claimFees();
+        token0.safeTransfer(owner, claimed0);
+        token1.safeTransfer(owner, claimed1);
+        emit ClaimedTradingFees(claimed0, claimed1);
+    }
+
     /* ========== MODIFIERS ========== */
 
     modifier updateReward(address account) {
@@ -559,4 +579,5 @@ contract MultiRewards is ReentrancyGuard, Pausable {
     event RewardPaid(address indexed user, address indexed rewardsToken, uint256 reward);
     event RewardsDurationUpdated(address token, uint256 newDuration);
     event Recovered(address token, uint256 amount);
+    event ClaimedTradingFees(uint256 claimed0, uint256 claimed1);
 }
